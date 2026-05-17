@@ -6,6 +6,7 @@ source: mixed
 
 | Date | File | Change | Author |
 |---|---|---|---|
+| 2026-05-17 | MILESTONES.md | Prepared M2 for Wolfgang as the deployed Runway application driver using Movement Commerce Rails with Stripe and Make.com integrations | mixed |
 | 2026-05-17 | crates/commerce-rails-contracts/src/lib.rs, MILESTONES.md | Completed M1 contract proof for installation, subscription entitlement, revenue-share payout obligation, and Stripe event receipt mapping | mixed |
 | 2026-05-17 | crates/commerce-rails-contracts/src/lib.rs, MILESTONES.md | Started M1 with a contract test proving partner app listing, plan, price, and revenue-share representation | mixed |
 | 2026-05-17 | crates/commerce-rails-contracts/src/lib.rs, MILESTONES.md | Added contract tests for CommerceId stability, provider refs, webhook replay keys, provider webhook command gates, command effects, and payout reconciliation | mixed |
