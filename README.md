@@ -36,26 +36,26 @@ and Mosaic, but it does not live inside them.
 
 ## Relationship to Runway
 
-[Runway](../../runway/) is the sibling authority. It owns platform identity, runtime, and devops substrate. Commerce Rails owns commercial authority.
+[Runway](../runway/) is the sibling authority. It owns platform identity, runtime, and devops substrate. Commerce Rails owns commercial authority.
 
-See [`kb/Architecture/Runway Movement Boundary.md`](kb/Architecture/Runway%20Movement%20Boundary.md) for the full authority table.
+See [`kb/Architecture/Runway Commerce Rails Boundary.md`](kb/Architecture/Runway%20Commerce%20Rails%20Boundary.md) for the full authority table.
 
 ## Runway Boundary
 
-Runway owns platform identity and runtime authority. Commerce Rails, inside
-Movement, owns commercial authority.
+Runway owns platform identity and runtime authority. Commerce Rails owns
+commercial authority.
 
 Organizations are split by authority:
 
 - Runway owns the canonical organization, users, membership, auth, and security
   configuration.
-- Movement owns the customer commercial organization projection used for
+- Commerce Rails owns the customer commercial organization projection used for
   billing, subscriptions, entitlements, provider references, and reconciliation.
 
 Stripe is also split by authority. Runway gets Stripe traffic safely to the app
-with secrets, routing, deployment config, and observability. Movement verifies
-and maps provider events, records `WebhookReceipt` values, applies idempotency
-and replay gates, and decides accepted commercial state.
+with secrets, routing, deployment config, and observability. Commerce Rails
+verifies and maps provider events, records `WebhookReceipt` values, applies
+idempotency and replay gates, and decides accepted commercial state.
 
 ## Stack Position
 
@@ -91,6 +91,11 @@ It defines the initial vocabulary:
 Stripe Connect is intentionally absent from those names. Stripe-specific state
 belongs behind the adapter boundary.
 
+The first provider adapter crate is `commerce-rails-stripe`. It owns Stripe
+provider config, API requests, webhook signature mechanics, receipt construction,
+and provider-event mapping. Runway calls this crate from its webhook and billing
+routes while keeping identity and org mirror plumbing in Runway.
+
 ## Command Safety
 
 Every consequential command is wrapped in a Commerce Rails command envelope
@@ -102,7 +107,7 @@ The first executable gear train is the partner piggy-back loop: list partner app
 install app for a customer, create subscription, grant entitlement, record
 revenue share, and stage partner payout.
 
-## Movement Terminology
+## Rail Terminology
 
 Commerce Rails uses mechanical-watch language for the rail control model:
 

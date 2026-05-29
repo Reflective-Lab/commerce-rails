@@ -7,9 +7,9 @@ source: mixed
 Stripe Connect is the first payment adapter for Commerce Rails. It is not the
 Commerce Rails domain model.
 
-Stripe crosses the Runway / Movement boundary. Runway owns provider transport,
-secret access, deployment config, and runtime observability. Movement owns
-commercial Stripe semantics.
+Stripe crosses the Runway / Commerce Rails boundary. Runway owns provider
+transport, secret access, deployment config, and runtime observability.
+Commerce Rails owns commercial Stripe semantics.
 
 ## Decision
 
@@ -84,8 +84,8 @@ The receipt must record:
 Duplicate events should be accepted as duplicates, not re-run as new business
 commands.
 
-Runway gets the webhook request safely to the Movement surface. Movement
-decides what the verified provider event means commercially.
+Runway gets the webhook request safely to the Commerce Rails surface. Commerce
+Rails decides what the verified provider event means commercially.
 
 ## Command Rule
 

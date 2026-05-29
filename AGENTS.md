@@ -14,7 +14,7 @@ those layers and owns Reflective Labs commercial authority.
 1. Read `README.md`.
 2. Read `kb/Home.md`.
 3. Read `kb/Architecture/Operating Authority Boundary.md`.
-4. Read `kb/Architecture/Runway Movement Boundary.md`.
+4. Read `kb/Architecture/Runway Commerce Rails Boundary.md`.
 5. Read `kb/Architecture/Executable Command Safety.md`.
 6. Read `kb/Contracts/Commerce Rail Surface.md`.
 7. Read `kb/Adapters/Stripe Connect Boundary.md`.
@@ -49,11 +49,11 @@ those are the actual commercial concepts.
   share, refunds, disputes, and commercial audit here.
 - Keep canonical users, auth, sessions, org membership, deployments,
   environments, runtime config, telemetry, and secrets in Runway.
-- Model customer commercial orgs here as Movement projections of Runway orgs;
+- Model customer commercial orgs here as Commerce Rails projections of Runway orgs;
   do not make Commerce Rails the canonical tenant or identity source.
 - Keep Stripe, Adyen, Klarna, and other providers behind adapter boundaries.
-  Runway owns provider transport and runtime plumbing; Movement owns commercial
-  provider semantics, receipts, idempotency, and reconciliation.
+  Runway owns provider transport and runtime plumbing; Commerce Rails owns
+  commercial provider semantics, receipts, idempotency, and reconciliation.
 - Keep Mosaic as the specialist bench: evidence, policy, analytics, memory,
   solvers, and generic provider capabilities.
 - Keep Converge as the proposal, promotion, receipt, fact, and replay engine.

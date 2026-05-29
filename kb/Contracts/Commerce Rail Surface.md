@@ -9,7 +9,7 @@ objects. These names are intentionally provider-neutral.
 
 The Rust contract crate is `commerce-rails-contracts`.
 
-Movement terms describe the rail control model around these contracts. They do
+Rail terms describe the control model around these contracts. They do
 not replace the plain domain names below.
 
 ## Accounts
@@ -18,8 +18,8 @@ not replace the plain domain names below.
 commerce.
 
 `CustomerOrg` is the customer commercial organization buying, installing, or
-using apps. It is a Movement projection of a canonical Runway organization, not
-the tenant identity source.
+using apps. It is a Commerce Rails projection of a canonical Runway organization,
+not the tenant identity source.
 
 `BuilderAccount` is a builder identity that can create app listings.
 

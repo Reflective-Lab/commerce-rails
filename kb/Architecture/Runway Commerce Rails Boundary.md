@@ -1,11 +1,11 @@
 ---
-tags: [architecture, authority, runway, movement, commerce]
+tags: [architecture, authority, runway, commerce]
 source: mixed
 ---
-# Runway Movement Boundary
+# Runway Commerce Rails Boundary
 
-Runway owns platform identity and runtime authority. Movement owns Reflective
-commercial authority.
+Runway owns platform identity and runtime authority. Commerce Rails owns
+Reflective commercial authority.
 
 The boundary is decided by who has authority over the consequence, not by which
 system first receives a request or event.
@@ -16,12 +16,12 @@ system first receives a request or event.
 |---|---|---|
 | Users | Runway | Canonical identity, authentication, sessions, invites, roles, and membership. |
 | Organizations | Runway | Canonical tenant and organization container. |
-| Customer commercial org | Movement | Commercial buyer/account projection of a Runway organization. |
+| Customer commercial org | Commerce Rails | Commercial buyer/account projection of a Runway organization. |
 | DevOps | Runway | Deployments, secrets, environments, runtime config, telemetry, and operational substrate. |
-| Subscriptions | Movement | Plans, prices, subscription state, billing state, and entitlement grants. |
-| Billing | Movement | Invoices, charges, refunds, revenue share, payout obligations, ledger, and reconciliation. |
+| Subscriptions | Commerce Rails | Plans, prices, subscription state, billing state, and entitlement grants. |
+| Billing | Commerce Rails | Invoices, charges, refunds, revenue share, payout obligations, ledger, and reconciliation. |
 | Stripe transport | Runway | Secret access, webhook ingress plumbing, deployment config, and runtime observability. |
-| Stripe commerce adapter | Movement | Provider mapping, idempotency, webhook receipts, commercial state transitions, and reconciliation semantics. |
+| Stripe commerce adapter | Commerce Rails | Provider mapping, idempotency, webhook receipts, commercial state transitions, and reconciliation semantics. |
 
 ## Organization Model
 
@@ -35,7 +35,7 @@ RunwayOrg
   auth and security configuration
 ```
 
-Movement owns the commercial projection:
+Commerce Rails owns the commercial projection:
 
 ```text
 CustomerOrg
@@ -46,7 +46,7 @@ CustomerOrg
   provider refs
 ```
 
-Runway answers who can act for an organization. Movement answers what that
+Runway answers who can act for an organization. Commerce Rails answers what that
 organization can buy, owes, receives, or is entitled to use.
 
 ## Stripe Split
@@ -57,13 +57,13 @@ ambiguously.
 ```text
 Stripe webhook HTTP request
   -> Runway routes it, provides secret access, and observes runtime health
-  -> Movement Stripe adapter verifies provider semantics and records receipt
-  -> Movement escapement applies idempotency, replay, policy, and HITL gates
-  -> Movement updates Subscription, EntitlementGrant, LedgerEntry, or payout state
+  -> Commerce Rails Stripe adapter verifies provider semantics and records receipt
+  -> Commerce Rails gates apply idempotency, replay, policy, and HITL checks
+  -> Commerce Rails updates Subscription, EntitlementGrant, LedgerEntry, or payout state
 ```
 
-Runway gets the Stripe event safely to the application. Movement decides what
-the Stripe event means commercially.
+Runway gets the Stripe event safely to the application. Commerce Rails decides
+what the Stripe event means commercially.
 
 ## Rule
 
@@ -72,4 +72,4 @@ the runtime is operated, it belongs to Runway.
 
 If the question is who pays, what is owed, what is granted, what is refundable,
 what must be reconciled, or what commercial state is accepted, it belongs to
-Movement.
+Commerce Rails.

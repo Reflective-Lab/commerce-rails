@@ -2,7 +2,7 @@
 tags: [architecture, terminology, commerce]
 source: mixed
 ---
-# Movement Terminology
+# Rail Terminology
 
 Commerce Rails uses mechanical-watch language for the rail control model. The
 terms are allowed when they map to real commerce behavior; they should not
