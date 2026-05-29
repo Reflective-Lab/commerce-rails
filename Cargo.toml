@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/commerce-rails-contracts",
+    "crates/commerce-rails-stripe",
 ]
 
 [workspace.package]
@@ -21,3 +22,15 @@ module_name_repetitions = "allow"
 missing_errors_doc = "allow"
 must_use_candidate = "allow"
 similar_names = "allow"
+
+[workspace.dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+hmac = "0.12"
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1" }
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1.48", features = ["macros", "rt-multi-thread"] }
+tracing = "0.1"
+uuid = { version = "1.11", features = ["v4"] }

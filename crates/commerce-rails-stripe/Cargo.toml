@@ -1,0 +1,30 @@
+[package]
+name = "commerce-rails-stripe"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "commerce_rails_stripe"
+path = "src/lib.rs"
+
+[dependencies]
+commerce-rails-contracts = { path = "../commerce-rails-contracts" }
+
+chrono.workspace = true
+hmac.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true
