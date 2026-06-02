@@ -11,7 +11,7 @@ name = "commerce_rails_stripe"
 path = "src/lib.rs"
 
 [dependencies]
-commerce-rails-contracts = { path = "../commerce-rails-contracts" }
+commerce-rails-contracts = { path = "../commerce-rails-contracts", version = "0.1.2" }
 
 chrono.workspace = true
 hmac.workspace = true
