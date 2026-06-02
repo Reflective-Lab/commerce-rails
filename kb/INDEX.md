@@ -7,7 +7,7 @@ source: mixed
 ## Architecture
 
 - [Operating Authority Boundary](Architecture/Operating%20Authority%20Boundary.md) - Commerce Rails ownership and stack placement
-- [Runway Commerce Rails Boundary](Architecture/Runway%20Commerce%20Rails%20Boundary.md) - users, orgs, DevOps, subscriptions, billing, and Stripe authority split
+- [Runtime Runway Commerce Rails Boundary](Architecture/Runtime%20Runway%20Commerce%20Rails%20Boundary.md) - users, orgs, DevOps, subscriptions, billing, and Stripe authority split
 - [Executable Command Safety](Architecture/Executable%20Command%20Safety.md) - idempotency, replay, webhook verification, policy, HITL, audit, and reconciliation gates
 - [Rail Terminology](Architecture/Rail%20Terminology.md) - movement, mainspring, gear train, escapement, balance, caliber, and complication language
 

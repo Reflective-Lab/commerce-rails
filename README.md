@@ -34,25 +34,25 @@ and Mosaic, but it does not live inside them.
 - Product-domain workflows such as escrow, lending, sourcing, or business ops.
 - Deployment infrastructure, secret storage implementation, or cloud topology.
 
-## Relationship to Runway
+## Relationship to Runtime Runway
 
-[Runway](../runway/) is the sibling authority. It owns platform identity, runtime, and devops substrate. Commerce Rails owns commercial authority.
+[Runtime Runway](../runtime-runway/) is the sibling authority. It owns platform identity, runtime, and devops substrate. Commerce Rails owns commercial authority.
 
-See [`kb/Architecture/Runway Commerce Rails Boundary.md`](kb/Architecture/Runway%20Commerce%20Rails%20Boundary.md) for the full authority table.
+See [`kb/Architecture/Runtime Runway Commerce Rails Boundary.md`](kb/Architecture/Runtime%20Runway%20Commerce%20Rails%20Boundary.md) for the full authority table.
 
-## Runway Boundary
+## Runtime Runway Boundary
 
-Runway owns platform identity and runtime authority. Commerce Rails owns
+Runtime Runway owns platform identity and runtime authority. Commerce Rails owns
 commercial authority.
 
 Organizations are split by authority:
 
-- Runway owns the canonical organization, users, membership, auth, and security
+- Runtime Runway owns the canonical organization, users, membership, auth, and security
   configuration.
 - Commerce Rails owns the customer commercial organization projection used for
   billing, subscriptions, entitlements, provider references, and reconciliation.
 
-Stripe is also split by authority. Runway gets Stripe traffic safely to the app
+Stripe is also split by authority. Runtime Runway gets Stripe traffic safely to the app
 with secrets, routing, deployment config, and observability. Commerce Rails
 verifies and maps provider events, records `WebhookReceipt` values, applies
 idempotency and replay gates, and decides accepted commercial state.
@@ -66,7 +66,7 @@ Reflective Commerce Rails
   -> Organism for formation selection
   -> Converge for proposals, promoted facts, receipts, and replay
   -> Mosaic for specialist policy, evidence, analytics, memory, providers, and solvers
-  -> Runway for deployment, secrets, auth, storage, telemetry
+  -> Runtime Runway for deployment, secrets, auth, storage, telemetry
 ```
 
 ## Current Surface
@@ -93,8 +93,8 @@ belongs behind the adapter boundary.
 
 The first provider adapter crate is `commerce-rails-stripe`. It owns Stripe
 provider config, API requests, webhook signature mechanics, receipt construction,
-and provider-event mapping. Runway calls this crate from its webhook and billing
-routes while keeping identity and org mirror plumbing in Runway.
+and provider-event mapping. Runtime Runway calls this crate from its webhook and billing
+routes while keeping identity and org mirror plumbing in Runtime Runway.
 
 ## Command Safety
 

@@ -13,7 +13,7 @@ machinery.
 ## Owns
 
 - Reflective billing and subscriptions.
-- Customer org commercial state as a projection of a canonical Runway
+- Customer org commercial state as a projection of a canonical Runtime Runway
   organization.
 - Partner accounts and builder accounts.
 - App listings and app installations.
@@ -24,9 +24,9 @@ machinery.
 ## Does Not Own
 
 - Canonical users, authentication, sessions, invites, roles, org membership, or
-  tenant identity; those belong in Runway.
+  tenant identity; those belong in Runtime Runway.
 - Deployment, environment, runtime config, telemetry, and secret-storage
-  authority; those belong in Runway.
+  authority; those belong in Runtime Runway.
 - Source-specific evidence ports; those belong in Embassy.
 - Generic provider, fetch, search, storage, vector, LLM, and tool capabilities;
   those belong in Manifold or Converge provider/tool contracts.
@@ -46,11 +46,11 @@ machinery.
 | Mosaic / Arbiter | Cedar policy, delegation, approval requirements |
 | Mosaic / Embassy | Source-specific evidence where needed |
 | Mosaic / Manifold | Generic provider and storage capabilities |
-| Runway | Deployment, secrets, auth, storage, telemetry |
+| Runtime Runway | Deployment, secrets, auth, storage, telemetry |
 
-## Runway Rule
+## Runtime Runway Rule
 
-Runway answers who can act, where code runs, how secrets are accessed, and how
+Runtime Runway answers who can act, where code runs, how secrets are accessed, and how
 the runtime is operated.
 
 Commerce Rails answers who pays, what is owed, what is granted, what is

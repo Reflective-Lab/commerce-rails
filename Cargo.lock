@@ -94,11 +94,11 @@ dependencies = [
 
 [[package]]
 name = "commerce-rails-contracts"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "commerce-rails-stripe"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "commerce-rails-contracts",

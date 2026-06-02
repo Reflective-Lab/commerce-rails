@@ -29,13 +29,13 @@
 
 ## M2 - Wolfgang Deployed Integration Driver
 
-Done when Wolfgang is the first application proving Commerce Rails in a deployed Runway environment.
+Done when Wolfgang is the first application proving Commerce Rails in a deployed Runtime Runway environment.
 
-- [ ] Wolfgang is deployed through Runway and consumes Runway-owned user, organization, auth, secrets, telemetry, and runtime configuration.
+- [ ] Wolfgang is deployed through Runtime Runway and consumes Runtime Runway-owned user, organization, auth, secrets, telemetry, and runtime configuration.
 - [ ] Wolfgang reads subscription, billing, and entitlement state from Commerce Rails instead of app-local Stripe state.
 - [ ] Commerce Rails exposes executable command handlers for the partner piggy-back loop with idempotency, replay protection, audit events, Arbiter policy checks, HITL gates, and reconciliation.
 - [ ] Stripe integration maps checkout, subscription, invoice, payment, and webhook events into Commerce Rails receipts, subscriptions, entitlements, ledger entries, transfer intents, and payout obligations without making Stripe IDs primary domain IDs.
-- [ ] Make.com integration can trigger or observe approved commerce commands through a scoped webhook or API boundary with audit, idempotency, replay protection, and secret handling delegated to Runway.
-- [ ] Wolfgang shows Runway-backed user and organization context plus Commerce Rails-backed subscription badge and entitlement state in the app shell.
+- [ ] Make.com integration can trigger or observe approved commerce commands through a scoped webhook or API boundary with audit, idempotency, replay protection, and secret handling delegated to Runtime Runway.
+- [ ] Wolfgang shows Runtime Runway-backed user and organization context plus Commerce Rails-backed subscription badge and entitlement state in the app shell.
 - [ ] End-to-end smoke passes: a user signs in to Wolfgang, starts checkout or subscription, Stripe webhook is received, Commerce Rails grants entitlement, Wolfgang reflects access, and Make.com receives or sends the expected integration event.
-- [ ] Documentation names Wolfgang as the first integration driver and keeps Runway runtime authority separate from Commerce Rails commercial authority.
+- [ ] Documentation names Wolfgang as the first integration driver and keeps Runtime Runway runtime authority separate from Commerce Rails commercial authority.

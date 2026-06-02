@@ -15,7 +15,7 @@ Knowledge base for Reflective Commerce Rails.
 
 - [[Architecture/Operating Authority Boundary]] - Commerce Rails owns
   Reflective commercial authority above Bedrock and Mosaic
-- [[Architecture/Runway Commerce Rails Boundary]] - split between Runway
+- [[Architecture/Runtime Runway Commerce Rails Boundary]] - split between Runtime Runway
   identity/runtime authority and Commerce Rails commercial authority
 - [[Architecture/Executable Command Safety]] - escapement rules for
   idempotency, policy, HITL, audit, replay, and reconciliation

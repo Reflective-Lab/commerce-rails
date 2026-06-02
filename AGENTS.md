@@ -6,7 +6,7 @@ Commerce Rails is the Reflective-owned business layer for billing,
 entitlements, partner commerce, revenue sharing, payouts, refunds, disputes,
 ledger-sensitive audit, and payment-provider reconciliation.
 
-It is not Mosaic, Converge, Organism, Axiom, Helms, or Runway. It consumes
+It is not Mosaic, Converge, Organism, Axiom, Helms, or Runtime Runway. It consumes
 those layers and owns Reflective Labs commercial authority.
 
 ## Start Here
@@ -14,7 +14,7 @@ those layers and owns Reflective Labs commercial authority.
 1. Read `README.md`.
 2. Read `kb/Home.md`.
 3. Read `kb/Architecture/Operating Authority Boundary.md`.
-4. Read `kb/Architecture/Runway Commerce Rails Boundary.md`.
+4. Read `kb/Architecture/Runtime Runway Commerce Rails Boundary.md`.
 5. Read `kb/Architecture/Executable Command Safety.md`.
 6. Read `kb/Contracts/Commerce Rail Surface.md`.
 7. Read `kb/Adapters/Stripe Connect Boundary.md`.
@@ -48,17 +48,17 @@ those are the actual commercial concepts.
 - Put Reflective billing, entitlements, marketplace, partner payouts, revenue
   share, refunds, disputes, and commercial audit here.
 - Keep canonical users, auth, sessions, org membership, deployments,
-  environments, runtime config, telemetry, and secrets in Runway.
-- Model customer commercial orgs here as Commerce Rails projections of Runway orgs;
+  environments, runtime config, telemetry, and secrets in Runtime Runway.
+- Model customer commercial orgs here as Commerce Rails projections of Runtime Runway orgs;
   do not make Commerce Rails the canonical tenant or identity source.
 - Keep Stripe, Adyen, Klarna, and other providers behind adapter boundaries.
-  Runway owns provider transport and runtime plumbing; Commerce Rails owns
+  Runtime Runway owns provider transport and runtime plumbing; Commerce Rails owns
   commercial provider semantics, receipts, idempotency, and reconciliation.
 - Keep Mosaic as the specialist bench: evidence, policy, analytics, memory,
   solvers, and generic provider capabilities.
 - Keep Converge as the proposal, promotion, receipt, fact, and replay engine.
 - Keep Axiom as the Truth compiler, Organism as formation selection, Helms as
-  trust-transfer surface, and Runway as deployment/secrets/telemetry.
+  trust-transfer surface, and Runtime Runway as deployment/secrets/telemetry.
 - Keep customer-owned business-system writeback in the customer app,
   engagement, or deployment boundary.
 

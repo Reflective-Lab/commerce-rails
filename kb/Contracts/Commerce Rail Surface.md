@@ -18,7 +18,7 @@ not replace the plain domain names below.
 commerce.
 
 `CustomerOrg` is the customer commercial organization buying, installing, or
-using apps. It is a Commerce Rails projection of a canonical Runway organization,
+using apps. It is a Commerce Rails projection of a canonical Runtime Runway organization,
 not the tenant identity source.
 
 `BuilderAccount` is a builder identity that can create app listings.

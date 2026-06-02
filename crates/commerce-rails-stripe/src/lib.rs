@@ -1,6 +1,6 @@
 //! Stripe provider adapter for Commerce Rails.
 //!
-//! Runway owns HTTP ingress, auth context, deployment config, and the
+//! Runtime Runway owns HTTP ingress, auth context, deployment config, and the
 //! eventually-consistent identity mirror. This crate owns the Stripe-specific
 //! provider calls, signature mechanics, webhook receipt construction, and
 //! commercial event interpretation.
