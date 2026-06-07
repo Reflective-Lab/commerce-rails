@@ -8,7 +8,7 @@ members = [
 [workspace.package]
 version = "0.1.2"
 edition = "2024"
-rust-version = "1.94.0"
+rust-version = "1.96.0"
 license = "MIT"
 repository = "https://github.com/Reflective-Lab/commerce-rails"
 publish = true
@@ -23,6 +23,17 @@ module_name_repetitions = "allow"
 missing_errors_doc = "allow"
 must_use_candidate = "allow"
 similar_names = "allow"
+# RP-HERMETIC-UNIT (Reflective QUALITY_BACKLOG.md → QF-2026-06-02-05):
+# denies `reqwest::Client::new` / `reqwest::blocking::Client::new` /
+# `::builder` so unit tests can't accidentally hit the network. The
+# disallowed-methods list lives in `clippy.toml` at the workspace root.
+# Production callsites and test helpers either use a DI constructor
+# (see Reflective KB standard `hermetic-unit-tests.md`) or annotate the
+# construction with `#[allow(clippy::disallowed_methods)]` + a
+# justification comment. Set to `deny` 2026-06-07 — commerce-rails-stripe's
+# `CommerceRails::new(client, config)` was already DI-ready; the test
+# helper `rails()` annotates its default-client sentinel inline.
+disallowed_methods = "deny"
 
 [workspace.dependencies]
 chrono = { version = "0.4", features = ["serde"] }
