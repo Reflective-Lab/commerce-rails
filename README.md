@@ -10,6 +10,14 @@ refund, dispute, and reconciliation infrastructure.
 This repository owns Reflective Labs commercial contracts. It consumes Bedrock
 and Mosaic, but it does not live inside them.
 
+## Boundary
+
+> Owns: commercial state, billing, entitlement, marketplace, payout, reconciliation; commercial-authority contracts and provider adapters. Does NOT own: runtime operations (→ Runtime Runway); product consequence (→ marquee/studio apps).
+
+— Canonical claim: [Commerce Rails](https://github.com/Reflective-Lab/reflective/blob/main/KB/04-architecture/current-system-map.md#commerce-rails) in the boundary registry. Update there first; this README quotes that source.
+
+The sections below elaborate the canonical claim with specifics.
+
 ## What It Owns
 
 - Customer and partner commercial accounts.
