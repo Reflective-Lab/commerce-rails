@@ -713,7 +713,15 @@ mod tests {
 
     fn rails() -> CommerceRails {
         let config = CommerceRailsConfig::new("whsec_test", "", "price_team", "price_starter");
-        CommerceRails::new(reqwest::Client::new(), config)
+        // RP-HERMETIC-UNIT (QF-2026-06-02-05): the tests that use `rails()`
+        // exercise signature verification and webhook parsing only — they
+        // never invoke the HTTP path, so the client here is a sentinel. If
+        // a future test needs to hit a stubbed Stripe API, wire a stub
+        // client (e.g. backed by `wiremock`) via the existing
+        // `CommerceRails::new(client, config)` DI constructor instead.
+        #[allow(clippy::disallowed_methods)]
+        let client = reqwest::Client::new();
+        CommerceRails::new(client, config)
     }
 
     fn signature_header(payload: &[u8], secret: &str) -> String {
