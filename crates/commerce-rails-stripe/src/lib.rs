@@ -17,7 +17,7 @@ use serde_json::Value;
 use sha2::Sha256;
 use std::collections::HashMap;
 use std::fmt::Write as _;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 const STRIPE_API_BASE: &str = "https://api.stripe.com/v1";
 const WEBHOOK_TOLERANCE_SECONDS: i64 = 300;
@@ -158,12 +158,14 @@ fn optional_string(value: impl Into<String>) -> Option<String> {
 #[derive(Clone)]
 pub struct CommerceRails {
     stripe: StripeAdapter,
+    entitlements: Arc<EntitlementStore>,
 }
 
 impl CommerceRails {
     pub fn new(client: reqwest::Client, config: CommerceRailsConfig) -> Self {
         Self {
             stripe: StripeAdapter::new(client, config.stripe),
+            entitlements: Arc::new(EntitlementStore::new()),
         }
     }
 
@@ -218,6 +220,33 @@ impl CommerceRails {
         payload: &[u8],
     ) -> Result<AcceptedWebhook, CommerceRailsError> {
         self.stripe.accept_webhook(payload)
+    }
+
+    /// Apply a typed webhook action to the entitlement store. Returns true
+    /// if state was mutated. Call this from the webhook HTTP handler after
+    /// `accept_stripe_webhook` returns an `AcceptedWebhook`.
+    pub fn apply_webhook_action(&self, action: &CommerceWebhookAction) -> bool {
+        self.entitlements.apply(action)
+    }
+
+    /// Returns true if the `firebase_uid` has an active subscription whose
+    /// plan grants the named app entitlement.
+    ///
+    /// Lookup: `firebase_uid` → `customer_ref` → `SubscriptionProjection`.
+    /// Active = `subscription_status` is one of `"active"` or `"trialing"`.
+    /// Apps come from `BillingPlan::apps()` — v1: every paid plan grants
+    /// `"quorum"`.
+    pub fn is_entitled(&self, firebase_uid: &str, app: &str) -> bool {
+        let Some(customer_ref) = self.entitlements.customer_ref_for(firebase_uid) else {
+            return false;
+        };
+        let Some(projection) = self.entitlements.projection_for(&customer_ref) else {
+            return false;
+        };
+        if !matches!(projection.subscription_status.as_str(), "active" | "trialing") {
+            return false;
+        }
+        projection.plan.apps().iter().any(|a| a == app)
     }
 }
 
