@@ -1,0 +1,15 @@
+# RUSTSEC IDs to ignore at `just security-audit` time.
+#
+# Format: one RUSTSEC ID per line. Blank lines and `#` comments are
+# ignored. Drift between repos is trackable by reading this file per
+# workspace.
+#
+# Each ignore MUST be justified inline:
+#   # Reason: <transitive crate>, <why we can't fix>, <exposure surface>
+#   RUSTSEC-YYYY-NNNN
+#
+# Removing an ignore is preferred over keeping it. Re-evaluate this
+# file every dependency-update PR.
+
+# (no current ignores — commerce-rails starts clean. Add new ignores
+# above this line with a Reason: comment.)

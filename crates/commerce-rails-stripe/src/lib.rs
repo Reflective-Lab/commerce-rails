@@ -243,7 +243,10 @@ impl CommerceRails {
         let Some(projection) = self.entitlements.projection_for(&customer_ref) else {
             return false;
         };
-        if !matches!(projection.subscription_status.as_str(), "active" | "trialing") {
+        if !matches!(
+            projection.subscription_status.as_str(),
+            "active" | "trialing"
+        ) {
             return false;
         }
         projection.plan.apps().iter().any(|a| a == app)
@@ -286,21 +289,30 @@ impl EntitlementStore {
     /// failures (mutex poisoned) are treated as no-op + false.
     pub fn apply(&self, action: &CommerceWebhookAction) -> bool {
         match action {
-            CommerceWebhookAction::LinkCustomerRef { firebase_uid, customer_ref } => {
+            CommerceWebhookAction::LinkCustomerRef {
+                firebase_uid,
+                customer_ref,
+            } => {
                 if let Ok(mut map) = self.customer_refs.lock() {
                     map.insert(firebase_uid.clone(), customer_ref.clone());
                     return true;
                 }
                 false
             }
-            CommerceWebhookAction::ApplySubscriptionProjection { customer_ref, projection } => {
+            CommerceWebhookAction::ApplySubscriptionProjection {
+                customer_ref,
+                projection,
+            } => {
                 if let Ok(mut map) = self.projections.lock() {
                     map.insert(customer_ref.clone(), projection.clone());
                     return true;
                 }
                 false
             }
-            CommerceWebhookAction::UpdateSubscriptionStatus { customer_ref, subscription_status } => {
+            CommerceWebhookAction::UpdateSubscriptionStatus {
+                customer_ref,
+                subscription_status,
+            } => {
                 if let Ok(mut map) = self.projections.lock()
                     && let Some(p) = map.get_mut(customer_ref)
                 {

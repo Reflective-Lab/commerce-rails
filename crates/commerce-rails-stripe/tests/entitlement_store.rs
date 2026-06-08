@@ -76,7 +76,10 @@ fn canceled_subscription_revokes_entitlement() {
             ..Default::default()
         },
     });
-    assert!(service.is_entitled("user-1", "quorum"), "pre-condition: entitled before cancel");
+    assert!(
+        service.is_entitled("user-1", "quorum"),
+        "pre-condition: entitled before cancel"
+    );
 
     service.apply_webhook_action(&CommerceWebhookAction::UpdateSubscriptionStatus {
         customer_ref: "cus_abc".to_string(),
