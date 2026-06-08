@@ -31,7 +31,7 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
-      - uses: extractions/setup-just@v3
+      - uses: extractions/setup-just@v4
       - run: just security-audit
 
   secrets:
