@@ -241,7 +241,10 @@ impl BillingPlan {
     pub fn apps(self) -> Vec<String> {
         match self {
             Self::Free => Vec::new(),
-            Self::Starter | Self::Team | Self::Enterprise => vec!["marquee".to_string()],
+            // v1: all paid plans grant Quorum (Reflective Labs single-app
+            // subscription). When a second app ships, extend the variant
+            // discriminant or the apps list per plan.
+            Self::Starter | Self::Team | Self::Enterprise => vec!["quorum".to_string()],
         }
     }
 }
@@ -769,7 +772,7 @@ mod tests {
                 customer_ref: "cus_123".to_string(),
                 projection: SubscriptionProjection {
                     plan: BillingPlan::Team,
-                    apps: vec!["marquee".to_string()],
+                    apps: vec!["quorum".to_string()],
                     subscription_status: "active".to_string(),
                     subscription_ref: Some("sub_123".to_string()),
                     current_period_end: Some(12345),
