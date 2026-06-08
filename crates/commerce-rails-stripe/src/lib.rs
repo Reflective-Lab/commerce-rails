@@ -15,7 +15,9 @@ use hmac::{Hmac, Mac};
 use serde::Deserialize;
 use serde_json::Value;
 use sha2::Sha256;
+use std::collections::HashMap;
 use std::fmt::Write as _;
+use std::sync::Mutex;
 
 const STRIPE_API_BASE: &str = "https://api.stripe.com/v1";
 const WEBHOOK_TOLERANCE_SECONDS: i64 = 300;
@@ -219,6 +221,70 @@ impl CommerceRails {
     }
 }
 
+/// In-memory entitlement state. Holds two mappings:
+/// - `firebase_uid` → `customer_ref` (set by `LinkCustomerRef`)
+/// - `customer_ref` → `SubscriptionProjection` (set/updated by
+///   `ApplySubscriptionProjection` and `UpdateSubscriptionStatus`)
+///
+/// v1 only; state is lost on restart. A future plan promotes this to
+/// StorageKit-backed persistence. Quorum consumes this via
+/// `CommerceRails::is_entitled` (not direct store access).
+#[derive(Default)]
+pub struct EntitlementStore {
+    /// `firebase_uid` → Stripe `customer_ref`
+    customer_refs: Mutex<HashMap<String, String>>,
+    /// `customer_ref` → current subscription projection
+    projections: Mutex<HashMap<String, SubscriptionProjection>>,
+}
+
+impl EntitlementStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Returns the `customer_ref` for a `firebase_uid`, if linked.
+    pub fn customer_ref_for(&self, firebase_uid: &str) -> Option<String> {
+        self.customer_refs.lock().ok()?.get(firebase_uid).cloned()
+    }
+
+    /// Returns the subscription projection for a `customer_ref`, if any.
+    pub fn projection_for(&self, customer_ref: &str) -> Option<SubscriptionProjection> {
+        self.projections.lock().ok()?.get(customer_ref).cloned()
+    }
+
+    /// Updates the store from a typed webhook action. Returns true if the
+    /// action mutated state; false for `Ignored` or no-op cases. Lock
+    /// failures (mutex poisoned) are treated as no-op + false.
+    pub fn apply(&self, action: &CommerceWebhookAction) -> bool {
+        match action {
+            CommerceWebhookAction::LinkCustomerRef { firebase_uid, customer_ref } => {
+                if let Ok(mut map) = self.customer_refs.lock() {
+                    map.insert(firebase_uid.clone(), customer_ref.clone());
+                    return true;
+                }
+                false
+            }
+            CommerceWebhookAction::ApplySubscriptionProjection { customer_ref, projection } => {
+                if let Ok(mut map) = self.projections.lock() {
+                    map.insert(customer_ref.clone(), projection.clone());
+                    return true;
+                }
+                false
+            }
+            CommerceWebhookAction::UpdateSubscriptionStatus { customer_ref, subscription_status } => {
+                if let Ok(mut map) = self.projections.lock()
+                    && let Some(p) = map.get_mut(customer_ref)
+                {
+                    p.subscription_status.clone_from(subscription_status);
+                    return true;
+                }
+                false
+            }
+            CommerceWebhookAction::Ignored => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BillingPlan {
     #[default]
@@ -249,7 +315,7 @@ impl BillingPlan {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SubscriptionProjection {
     pub plan: BillingPlan,
     pub apps: Vec<String>,
