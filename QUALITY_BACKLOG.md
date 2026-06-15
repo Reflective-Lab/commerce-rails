@@ -37,12 +37,13 @@ Active implementor handoff: `/Users/kpernyer/dev/reflective/HANDOFF_quorum-sense
 
 ### QF-CR-04 — CR deploy recipes referenced by `runway.app.json:deploy_contracts`
 - **Severity:** A
-- **State:** Open
+- **State:** Open — **v0.1 stub published 2026-06-15** at `kb/Contracts/Deploy Recipes/commerce-rails-stripe@0.1.yaml` to unblock RR `D4`/`D6` validation. Full recipe (final source taxonomy, secret-mount layout, template substitution syntax) lands with RR `D4` shape and closes this item.
 - **Owner:** `[CR-ARCH]` (recipe definition + publishing format), `[RR-ARCH]` (manifest schema D6 + deploy template D4)
 - **Origin:** `REVIEW_quorum-sense_2026-06-15.md` Round 2 D6 (RR-ARCH filed) → CR ownership of the recipe format per Round 2 reconciliation.
-- **Scope:** Publish CR-owned deploy recipes keyed by `(key, version)` (e.g. `key = "commerce-rails-stripe", version = "0.1"`). Recipe lists the env vars CR owns (`STRIPE_*` etc.) so the app's `runway.app.json` declares `deploy_contracts: [{key, version}]` only — never the raw env names. RR's deploy template materializes the env slots by looking up the published recipe.
-- **Acceptance:** quorum-sense's `deploy/cloud-run-provision.sh` no longer mentions `STRIPE_*` env vars; the recipe materialization handles them. `just project-doctor` reports zero `STRIPE_*` strings in any marquee-app deploy script.
-- **Blocks/blocked by:** depends on RR's D1 (manifest verifier) + D4 (deploy template). Recipe format spec is CR's deliverable; the verifier and template are RR's. Pairs with QF-CR-10 (`Plan` enum).
+- **Scope:** Publish CR-owned deploy recipes keyed by `(key, version)` (e.g. `key = "commerce-rails-stripe", version = "0.1"`). Recipe lists the env vars CR owns (`STRIPE_*` + `CR_*` URLs from v0.2.2) so the app's `runway.app.json` declares `deploy_contracts: [{key, version}]` only — never the raw env names. RR's deploy template materializes the env slots by looking up the published recipe.
+- **v0.1 stub contents:** 4 required env vars (`STRIPE_WEBHOOK_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_PRICE_TEAM_MONTHLY`, `STRIPE_PRICE_STARTER_MONTHLY`); 3 optional (`CR_SIGNUP_URL`, `CR_CHECKOUT_URL`, `CR_PORTAL_URL`); `forbidden_in_app_deploy` list mirroring the above. Source taxonomy is a placeholder pair (`secret-manager` / `deploy-config`) — adopts RR `D4`'s real taxonomy verbatim when it lands.
+- **Acceptance:** quorum-sense's `deploy/cloud-run-provision.sh` no longer mentions `STRIPE_*`/`CR_*` env vars; the recipe materialization handles them. `just project-doctor` reports zero such strings in any marquee-app deploy script.
+- **Blocks/blocked by:** depends on RR's D1 (manifest verifier) + D4 (deploy template). Stub now exists for D4/D6 validation. Pairs with QF-CR-10 (`Plan` enum) — when CR-10 lands, the two `STRIPE_PRICE_*` entries collapse into a CR-internal map and the recipe shrinks (planned bump path v0.1 → v0.2 → v1.0 documented in the stub).
 - **Promotes:** standard `RP-NO-PROVIDER-VARS-IN-APP-DEPLOY` in `commerce-rails/kb/05-engineering/standards/` (creates folder).
 
 ### QF-CR-05 — Publish `EntitlementProjection` schema + widget contract

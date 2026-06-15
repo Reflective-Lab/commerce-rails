@@ -1,0 +1,128 @@
+# Commerce-Rails deploy recipe — Stripe adapter (v0.1 stub)
+#
+# Purpose: enumerate the env vars Commerce-Rails owns for the Stripe
+# adapter at v0.1 so RR's D4 deploy template + D1 manifest verifier
+# have a concrete target to materialize / validate against.
+#
+# Status: v0.1 STUB. Names + semantics are stable; format details
+# (source taxonomy, secret-mount layout, template substitution syntax)
+# will firm up when RR D4 lands and the template tells us what shape
+# the materializer expects. The primary purpose at v0.1 is to unblock
+# D4/D6 validation, not to ship as the final deploy contract — that
+# closes with QF-CR-04 in commerce-rails/QUALITY_BACKLOG.md.
+#
+# Apps that opt into this recipe declare:
+#
+#   runway.app.json:
+#     deploy_contracts:
+#       - key: commerce-rails-stripe
+#         version: "0.1"
+#
+# RR's D4 template materializes the env-var slots listed below from
+# this recipe. Apps must NOT carry these env vars in their own
+# deploy script or runway.app.json (see RP-NO-PROVIDER-VARS-IN-APP-DEPLOY,
+# promoted on QF-CR-04 close).
+#
+# References:
+#   - HANDOFF_quorum-sense_2026-06-15.md Section 5 (QF-CR-04 row)
+#   - commerce-rails/kb/Contracts/Apps Consuming Commerce Rails.md
+#   - commerce-rails/QUALITY_BACKLOG.md (QF-CR-04, Open)
+#   - REVIEW_quorum-sense_2026-06-15.md Round 3 item 9
+
+key: commerce-rails-stripe
+version: "0.1"
+owner: commerce-rails
+status: stub
+
+# Env vars Commerce-Rails owns. Source code references are stable
+# call-sites in commerce-rails-stripe v0.2.2.
+
+env:
+  required:
+    - name: STRIPE_WEBHOOK_SECRET
+      source: secret-manager
+      consumer: "commerce-rails-stripe::CommerceRailsConfig::from_env"
+      semantics: |
+        Stripe webhook signing secret (whsec_*). Used by the CR adapter
+        to verify HMAC signatures on incoming Stripe webhook payloads
+        via verify_stripe_webhook_signature. Empty value treated as
+        unset; non-local deploys must set it (production check in
+        CommerceRailsConfig::from_env).
+
+    - name: STRIPE_SECRET_KEY
+      source: secret-manager
+      consumer: "commerce-rails-stripe::StripeAdapter"
+      semantics: |
+        Stripe API secret key (sk_*). Used for outbound HTTP to
+        api.stripe.com — customer search/create, checkout sessions,
+        billing-portal sessions. Required in production deploys.
+
+    - name: STRIPE_PRICE_TEAM_MONTHLY
+      source: deploy-config
+      consumer: "commerce-rails-stripe::StripeConfig::plan_from_price_ids"
+      semantics: |
+        Stripe price ID (price_*) that maps to BillingPlan::Team in
+        webhook event interpretation. Recipe v0.1 carries this as a
+        deploy-time string; QF-CR-10 (Plan enum on public API) will
+        move price-ID resolution behind a CR-internal map so apps
+        never see this var.
+
+    - name: STRIPE_PRICE_STARTER_MONTHLY
+      source: deploy-config
+      consumer: "commerce-rails-stripe::StripeConfig::plan_from_price_ids"
+      semantics: |
+        Stripe price ID that maps to BillingPlan::Starter. See note
+        above re QF-CR-10 future shape.
+
+  optional:
+    - name: CR_SIGNUP_URL
+      source: deploy-config
+      consumer: "commerce-rails-stripe::CommerceRailsConfig::from_env (added v0.2.2)"
+      semantics: |
+        Static signup URL surfaced in EntitlementProjection.signup_url
+        (QF-CR-05). Apps redirect not-yet-entitled users here instead
+        of hardcoding the URL in the SPA. Empty value treated as
+        unset (None in projection).
+
+    - name: CR_CHECKOUT_URL
+      source: deploy-config
+      consumer: "commerce-rails-stripe::CommerceRailsConfig::from_env (added v0.2.2)"
+      semantics: |
+        Static checkout URL surfaced in EntitlementProjection.checkout_url.
+        For dynamic per-customer checkout sessions, apps call
+        CommerceRails::create_checkout_session directly (out of band of
+        the projection).
+
+    - name: CR_PORTAL_URL
+      source: deploy-config
+      consumer: "commerce-rails-stripe::CommerceRailsConfig::from_env (added v0.2.2)"
+      semantics: |
+        Static billing-portal URL surfaced in EntitlementProjection.portal_url.
+        For dynamic per-customer portal sessions, apps call
+        CommerceRails::create_portal_session directly.
+
+# Vars apps must NEVER carry locally (will be materialized from this
+# recipe by RR's D4 template; `just project-doctor` lint rejects them
+# in app repos on QF-CR-04 close).
+forbidden_in_app_deploy:
+  - STRIPE_WEBHOOK_SECRET
+  - STRIPE_SECRET_KEY
+  - STRIPE_PRICE_TEAM_MONTHLY
+  - STRIPE_PRICE_STARTER_MONTHLY
+  - CR_SIGNUP_URL
+  - CR_CHECKOUT_URL
+  - CR_PORTAL_URL
+
+# Stub-specific notes (will not appear in v1.0):
+notes:
+  - The `source` field uses a placeholder two-value taxonomy
+    (secret-manager / deploy-config). RR D4 will specify the real
+    taxonomy (e.g. Secret Manager resource path, plain env, Cloud Run
+    secret-mount path) — this recipe will adopt it verbatim.
+  - The `consumer` field names the CR call-site that reads the var.
+    Useful for the implementor; may move to a separate trace doc in v1.
+  - When QF-CR-10 lands, the two `STRIPE_PRICE_*` entries collapse
+    into a per-plan map managed inside CR, not exposed to deploy. The
+    deploy recipe shrinks accordingly. Backwards-compatible bump path:
+    v0.1 (current) → v0.2 (price IDs internal) → v1.0 (Plan enum on
+    public API, deploy recipe minimal).
