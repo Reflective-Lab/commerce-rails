@@ -13,11 +13,14 @@ name = "commerce_rails_stripe"
 path = "src/lib.rs"
 
 [dependencies]
-commerce-rails-contracts = { path = "../commerce-rails-contracts", version = "0.1.2" }
+commerce-rails-contracts = { path = "../commerce-rails-contracts", version = "0.2.2" }
 
+anyhow.workspace = true
+async-trait.workspace = true
 chrono.workspace = true
 hmac.workspace = true
 reqwest.workspace = true
+runway-storage.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -26,6 +29,7 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+tempfile.workspace = true
 tokio.workspace = true
 
 [lints]

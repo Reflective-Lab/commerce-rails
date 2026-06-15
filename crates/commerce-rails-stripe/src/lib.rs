@@ -9,18 +9,38 @@
 
 use chrono::Utc;
 use commerce_rails_contracts::{
-    CommerceId, ProviderName, ReplayKey, Timestamp, WebhookReceipt, WebhookReceiptStatus,
+    CommerceId, CustomerId, ProviderName, ReplayKey, Timestamp, WebhookReceipt,
+    WebhookReceiptStatus,
 };
 use hmac::{Hmac, Mac};
-use serde::Deserialize;
-use serde_json::Value;
+use runway_storage::{Document, DocumentStore};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use sha2::Sha256;
 use std::collections::HashMap;
 use std::fmt::Write as _;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 const STRIPE_API_BASE: &str = "https://api.stripe.com/v1";
 const WEBHOOK_TOLERANCE_SECONDS: i64 = 300;
+
+/// Document-store collection: Firebase UID → `CustomerId` mapping.
+/// Document.id = firebase_uid; data = `{ "customer_id": "..." }`.
+const COLL_FIREBASE_TO_CUSTOMER: &str = "commerce.firebase_to_customer";
+
+/// Document-store collection: `CustomerId` → `SubscriptionProjection`.
+/// Document.id = customer_id.as_str(); data = serialized projection.
+const COLL_CUSTOMER_PROJECTIONS: &str = "commerce.customer_projections";
+
+/// Document-store collection: provider object refs → `CustomerId`. Used to
+/// resolve a Stripe `cus_*` back to a CR-internal `CustomerId` on subsequent
+/// webhooks. Document.id = `"{provider}:{object_id}"`; data = `{ "customer_id": "..." }`.
+///
+/// QF-CR-08: provider IDs never key the entitlement domain; they are
+/// `ProviderObjectRef` values resolved at the adapter boundary into a
+/// CR-owned `CustomerId`.
+const COLL_PROVIDER_TO_CUSTOMER: &str = "commerce.provider_to_customer";
 
 #[derive(Debug, thiserror::Error)]
 pub enum CommerceRailsError {
@@ -30,6 +50,8 @@ pub enum CommerceRailsError {
     Provider(String),
     #[error("invalid stripe webhook JSON: {0}")]
     InvalidWebhookJson(String),
+    #[error("entitlement storage error: {0}")]
+    Storage(String),
 }
 
 impl CommerceRailsError {
@@ -41,6 +63,9 @@ impl CommerceRailsError {
 #[derive(Debug, Clone)]
 pub struct CommerceRailsConfig {
     stripe: StripeConfig,
+    signup_url: Option<String>,
+    checkout_url: Option<String>,
+    portal_url: Option<String>,
 }
 
 impl CommerceRailsConfig {
@@ -57,11 +82,44 @@ impl CommerceRailsConfig {
                 stripe_price_team_monthly,
                 stripe_price_starter_monthly,
             ),
+            signup_url: None,
+            checkout_url: None,
+            portal_url: None,
         }
     }
 
     pub fn local() -> Self {
         Self::new("", "", "", "")
+    }
+
+    /// Sets the static signup URL surfaced by
+    /// [`CommerceRails::entitlement_projection`] (QF-CR-05). Apps redirect
+    /// not-yet-entitled users here instead of hard-coding the URL in the
+    /// SPA.
+    #[must_use]
+    pub fn with_signup_url(mut self, url: impl Into<String>) -> Self {
+        self.signup_url = Some(url.into());
+        self
+    }
+
+    /// Sets the static checkout URL surfaced by
+    /// [`CommerceRails::entitlement_projection`] (QF-CR-05). For dynamic
+    /// per-customer checkout sessions, call
+    /// [`CommerceRails::create_checkout_session`] directly.
+    #[must_use]
+    pub fn with_checkout_url(mut self, url: impl Into<String>) -> Self {
+        self.checkout_url = Some(url.into());
+        self
+    }
+
+    /// Sets the static billing-portal URL surfaced by
+    /// [`CommerceRails::entitlement_projection`] (QF-CR-05). For dynamic
+    /// per-customer portal sessions, call
+    /// [`CommerceRails::create_portal_session`] directly.
+    #[must_use]
+    pub fn with_portal_url(mut self, url: impl Into<String>) -> Self {
+        self.portal_url = Some(url.into());
+        self
     }
 
     pub fn from_env(local_dev: bool) -> Result<Self, CommerceRailsError> {
@@ -97,12 +155,34 @@ impl CommerceRailsConfig {
             }
         }
 
-        Ok(Self::new(
+        let mut config = Self::new(
             stripe_webhook_secret,
             stripe_secret_key,
             stripe_price_team_monthly,
             stripe_price_starter_monthly,
-        ))
+        );
+
+        // QF-CR-05: projection URLs are optional and surfaced via the
+        // `EntitlementProjection` returned by `entitlement_projection()`.
+        // Empty strings are treated as unset (consistent with the Stripe
+        // env vars above).
+        if let Ok(url) = std::env::var("CR_SIGNUP_URL")
+            && !url.trim().is_empty()
+        {
+            config.signup_url = Some(url);
+        }
+        if let Ok(url) = std::env::var("CR_CHECKOUT_URL")
+            && !url.trim().is_empty()
+        {
+            config.checkout_url = Some(url);
+        }
+        if let Ok(url) = std::env::var("CR_PORTAL_URL")
+            && !url.trim().is_empty()
+        {
+            config.portal_url = Some(url);
+        }
+
+        Ok(config)
     }
 }
 
@@ -155,17 +235,133 @@ fn optional_string(value: impl Into<String>) -> Option<String> {
     }
 }
 
+/// Callback invoked synchronously after a successful
+/// [`CommerceRails::apply_webhook_action`] mutation. Registered via
+/// [`CommerceRails::register_post_apply`].
+pub type PostApplyCallback = Arc<dyn Fn(&CommerceWebhookAction) + Send + Sync>;
+
+/// Registry of post-apply callbacks. Internal to `CommerceRails`; callers
+/// hold a [`CallbackHandle`] that owns deregistration on drop.
+#[derive(Default)]
+struct PostApplyRegistry {
+    next_id: AtomicU64,
+    callbacks: Mutex<HashMap<u64, PostApplyCallback>>,
+}
+
+impl PostApplyRegistry {
+    fn register(&self, callback: PostApplyCallback) -> u64 {
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        if let Ok(mut map) = self.callbacks.lock() {
+            map.insert(id, callback);
+        }
+        id
+    }
+
+    fn deregister(&self, id: u64) {
+        if let Ok(mut map) = self.callbacks.lock() {
+            map.remove(&id);
+        }
+    }
+
+    /// Fires all registered callbacks synchronously. Snapshots the callback
+    /// list under the lock and releases it before invoking — this prevents a
+    /// callback that re-enters `CommerceRails` (e.g. to call `is_entitled`)
+    /// from deadlocking on the registry mutex.
+    fn fire(&self, action: &CommerceWebhookAction) {
+        let snapshot: Vec<PostApplyCallback> = match self.callbacks.lock() {
+            Ok(map) => map.values().cloned().collect(),
+            Err(_) => return,
+        };
+        for cb in snapshot {
+            cb(action);
+        }
+    }
+}
+
+/// Guard returned by [`CommerceRails::register_post_apply`]. Dropping the
+/// guard deregisters the callback. Hold for the lifetime of the consumer
+/// (e.g. `runway-accounts` stores it in the webhook-handler state).
+pub struct CallbackHandle {
+    id: u64,
+    registry: Arc<PostApplyRegistry>,
+}
+
+impl Drop for CallbackHandle {
+    fn drop(&mut self) {
+        self.registry.deregister(self.id);
+    }
+}
+
 #[derive(Clone)]
 pub struct CommerceRails {
     stripe: StripeAdapter,
     entitlements: Arc<EntitlementStore>,
+    post_apply: Arc<PostApplyRegistry>,
+    /// Static URLs surfaced by [`Self::entitlement_projection`] (QF-CR-05).
+    /// Cloned from `CommerceRailsConfig` at construction; cheap because the
+    /// projection method is called only at shell init and entitlement
+    /// transitions.
+    signup_url: Option<String>,
+    checkout_url: Option<String>,
+    portal_url: Option<String>,
 }
 
 impl CommerceRails {
-    pub fn new(client: reqwest::Client, config: CommerceRailsConfig) -> Self {
+    /// Constructs a new `CommerceRails` instance.
+    ///
+    /// `store` is a [`DocumentStore`] used to persist the entitlement state
+    /// across process restarts (QF-CR-03). For Tauri local development pass
+    /// `runway_storage::StorageKit::local(path).await?.documents`; for Cloud
+    /// Run pass `StorageKit::remote(config).await?.documents`. Hermetic unit
+    /// tests construct a `StorageKit::local(tempfile::tempdir()?.path())`.
+    ///
+    /// Calling this constructor does no I/O — the store handle is captured but
+    /// not touched until the first `is_entitled` / `apply_webhook_action`
+    /// call.
+    pub fn new(
+        client: reqwest::Client,
+        config: CommerceRailsConfig,
+        store: Arc<dyn DocumentStore>,
+    ) -> Self {
+        let CommerceRailsConfig {
+            stripe,
+            signup_url,
+            checkout_url,
+            portal_url,
+        } = config;
         Self {
-            stripe: StripeAdapter::new(client, config.stripe),
-            entitlements: Arc::new(EntitlementStore::new()),
+            stripe: StripeAdapter::new(client, stripe),
+            entitlements: Arc::new(EntitlementStore::new(store)),
+            post_apply: Arc::new(PostApplyRegistry::default()),
+            signup_url,
+            checkout_url,
+            portal_url,
+        }
+    }
+
+    /// Registers a callback fired synchronously after every successful
+    /// [`apply_webhook_action`](Self::apply_webhook_action) mutation. The
+    /// callback receives a reference to the [`CommerceWebhookAction`] that
+    /// caused the mutation.
+    ///
+    /// Callbacks do **not** fire for actions that result in no mutation —
+    /// [`CommerceWebhookAction::Ignored`], `UpdateSubscriptionStatus` for an
+    /// unknown customer, or any storage error.
+    ///
+    /// Returns a [`CallbackHandle`] that deregisters the callback on drop.
+    /// Hold the handle for the consumer's lifetime — `runway-accounts`
+    /// stores it in the webhook-handler state so the Firebase custom claim
+    /// refresh fires on every webhook acceptance.
+    ///
+    /// **Mechanism** (panel-agreed, QF-CR-06): in-process synchronous
+    /// callback, no event bus dependency, no Pub/Sub fan-out. Cross-instance
+    /// coherence is handled by `EntitlementStore` persistence (QF-CR-03)
+    /// plus RR's `refresh-on-403` client pattern.
+    pub fn register_post_apply(&self, callback: PostApplyCallback) -> CallbackHandle {
+        let id = self.post_apply.register(callback);
+        CallbackHandle {
+            id,
+            registry: self.post_apply.clone(),
         }
     }
 
@@ -225,23 +421,69 @@ impl CommerceRails {
     /// Apply a typed webhook action to the entitlement store. Returns true
     /// if state was mutated. Call this from the webhook HTTP handler after
     /// `accept_stripe_webhook` returns an `AcceptedWebhook`.
-    pub fn apply_webhook_action(&self, action: &CommerceWebhookAction) -> bool {
-        self.entitlements.apply(action)
+    ///
+    /// Async because the entitlement store is backed by a persistent
+    /// [`DocumentStore`] (QF-CR-03). Storage errors are logged via `tracing`
+    /// and the method returns `false`; the webhook handler should observe its
+    /// own tracing scope to decide whether to return 5xx to Stripe (which
+    /// triggers a retry).
+    pub async fn apply_webhook_action(&self, action: &CommerceWebhookAction) -> bool {
+        let mutated = match self.entitlements.apply(action).await {
+            Ok(m) => m,
+            Err(err) => {
+                tracing::error!(error = %err, "entitlement store apply failed");
+                return false;
+            }
+        };
+        if mutated {
+            // QF-CR-06: fire post-apply callbacks synchronously *after* the
+            // store mutation succeeds. Consumers (notably `runway-accounts`)
+            // use this to refresh Firebase custom claims for the affected
+            // `firebase_uid`. Callbacks for no-op actions (`Ignored` or
+            // `UpdateSubscriptionStatus` against an unknown customer) do not
+            // fire — there is nothing to refresh.
+            self.post_apply.fire(action);
+        }
+        mutated
     }
 
     /// Returns true if the `firebase_uid` has an active subscription whose
     /// plan grants the named app entitlement.
     ///
-    /// Lookup: `firebase_uid` → `customer_ref` → `SubscriptionProjection`.
-    /// Active = `subscription_status` is one of `"active"` or `"trialing"`.
-    /// Apps come from `BillingPlan::apps()` — v1: every paid plan grants
-    /// `"quorum"`.
-    pub fn is_entitled(&self, firebase_uid: &str, app: &str) -> bool {
-        let Some(customer_ref) = self.entitlements.customer_ref_for(firebase_uid) else {
-            return false;
+    /// Lookup chain: `firebase_uid` → CR-internal [`CustomerId`] →
+    /// [`SubscriptionProjection`]. Active = `subscription_status` is one of
+    /// `"active"` or `"trialing"`. Apps come from `BillingPlan::apps()` —
+    /// v1: every paid plan grants `"quorum"` (tracked as QF-CR-11).
+    ///
+    /// Async because the entitlement store is backed by a persistent
+    /// [`DocumentStore`] (QF-CR-03). Fail-closed on storage error: returns
+    /// `false` and logs via `tracing::error`. Result is valid only for the
+    /// lifetime of the JWT that produced `firebase_uid`; never cache past
+    /// JWT validity (Marquee App Contract rule 8).
+    pub async fn is_entitled(&self, firebase_uid: &str, app: &str) -> bool {
+        let customer_id = match self.entitlements.customer_id_for_firebase(firebase_uid).await {
+            Ok(Some(cid)) => cid,
+            Ok(None) => return false,
+            Err(err) => {
+                tracing::error!(
+                    error = %err,
+                    firebase_uid,
+                    "is_entitled: customer lookup failed"
+                );
+                return false;
+            }
         };
-        let Some(projection) = self.entitlements.projection_for(&customer_ref) else {
-            return false;
+        let projection = match self.entitlements.projection_for_customer(&customer_id).await {
+            Ok(Some(p)) => p,
+            Ok(None) => return false,
+            Err(err) => {
+                tracing::error!(
+                    error = %err,
+                    customer_id = customer_id.as_str(),
+                    "is_entitled: projection lookup failed"
+                );
+                return false;
+            }
         };
         if !matches!(
             projection.subscription_status.as_str(),
@@ -251,82 +493,242 @@ impl CommerceRails {
         }
         projection.plan.apps().iter().any(|a| a == app)
     }
+
+    /// Returns the rich entitlement read for `firebase_uid` against `app`.
+    /// Companion to [`Self::is_entitled`] (the hot-path bool gate); called
+    /// at app-shell init and after entitlement transitions, not
+    /// per-request (QF-CR-05; RR CR-OQ4 answer).
+    ///
+    /// The returned [`EntitlementProjection`] field set is panel-locked.
+    /// Storage errors are logged via `tracing::error` and treated as
+    /// "no projection found" — the response still includes any configured
+    /// static URLs so the consuming app shell can render an unentitled
+    /// state correctly.
+    pub async fn entitlement_projection(
+        &self,
+        firebase_uid: &str,
+        app: &str,
+    ) -> EntitlementProjection {
+        let customer_id = match self.entitlements.customer_id_for_firebase(firebase_uid).await {
+            Ok(opt) => opt,
+            Err(err) => {
+                tracing::error!(
+                    error = %err,
+                    firebase_uid,
+                    "entitlement_projection: customer lookup failed"
+                );
+                None
+            }
+        };
+        let projection = match customer_id.as_ref() {
+            Some(cid) => match self.entitlements.projection_for_customer(cid).await {
+                Ok(opt) => opt,
+                Err(err) => {
+                    tracing::error!(
+                        error = %err,
+                        customer_id = cid.as_str(),
+                        "entitlement_projection: projection lookup failed"
+                    );
+                    None
+                }
+            },
+            None => None,
+        };
+
+        let (entitled, next_renewal, plan_label) = match projection {
+            Some(p) => {
+                let active = matches!(
+                    p.subscription_status.as_str(),
+                    "active" | "trialing"
+                ) && p.plan.apps().iter().any(|a| a == app);
+                let next_renewal = p
+                    .current_period_end
+                    .and_then(|secs| chrono::DateTime::<chrono::Utc>::from_timestamp(secs, 0));
+                let plan_label = Some(p.plan.as_str().to_string());
+                (active, next_renewal, plan_label)
+            }
+            None => (false, None, None),
+        };
+
+        EntitlementProjection {
+            entitled,
+            checkout_url: self.checkout_url.clone(),
+            portal_url: self.portal_url.clone(),
+            signup_url: self.signup_url.clone(),
+            next_renewal,
+            plan_label,
+        }
+    }
 }
 
-/// In-memory entitlement state. Holds two mappings:
-/// - `firebase_uid` → `customer_ref` (set by `LinkCustomerRef`)
-/// - `customer_ref` → `SubscriptionProjection` (set/updated by
-///   `ApplySubscriptionProjection` and `UpdateSubscriptionStatus`)
+/// Entitlement state backed by a persistent [`DocumentStore`].
 ///
-/// v1 only; state is lost on restart. A future plan promotes this to
-/// StorageKit-backed persistence. Quorum consumes this via
-/// `CommerceRails::is_entitled` (not direct store access).
-#[derive(Default)]
+/// Holds three logical mappings, one per collection:
+/// - [`COLL_FIREBASE_TO_CUSTOMER`]: `firebase_uid` → CR-internal [`CustomerId`]
+/// - [`COLL_PROVIDER_TO_CUSTOMER`]: provider object ref → [`CustomerId`]
+///   (Stripe `cus_*` resolution; mints a fresh `CustomerId` on first sight)
+/// - [`COLL_CUSTOMER_PROJECTIONS`]: [`CustomerId`] → [`SubscriptionProjection`]
+///
+/// Quorum and other consumers do NOT access the store directly; they call
+/// `CommerceRails::is_entitled` and `CommerceRails::entitlement_projection`
+/// (the latter lands with QF-CR-05). The store is internal CR machinery.
+///
+/// Persistence policy (QF-CR-03): state survives process restart without
+/// webhook replay. Backed by `runway-storage::DocumentStore` — `redb` in
+/// Tauri local and Firestore in Cloud Run.
+///
+/// Identity policy (QF-CR-08): the store keys by CR-owned [`CustomerId`].
+/// Provider IDs (Stripe `cus_*`) are kept only as resolver keys in
+/// [`COLL_PROVIDER_TO_CUSTOMER`] and never as primary domain identifiers.
 pub struct EntitlementStore {
-    /// `firebase_uid` → Stripe `customer_ref`
-    customer_refs: Mutex<HashMap<String, String>>,
-    /// `customer_ref` → current subscription projection
-    projections: Mutex<HashMap<String, SubscriptionProjection>>,
+    store: Arc<dyn DocumentStore>,
 }
 
 impl EntitlementStore {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(store: Arc<dyn DocumentStore>) -> Self {
+        Self { store }
     }
 
-    /// Returns the `customer_ref` for a `firebase_uid`, if linked.
-    pub fn customer_ref_for(&self, firebase_uid: &str) -> Option<String> {
-        self.customer_refs.lock().ok()?.get(firebase_uid).cloned()
+    /// Returns the [`CustomerId`] linked to a `firebase_uid`, if any.
+    pub async fn customer_id_for_firebase(
+        &self,
+        firebase_uid: &str,
+    ) -> Result<Option<CustomerId>, CommerceRailsError> {
+        let doc = self
+            .store
+            .get(COLL_FIREBASE_TO_CUSTOMER, firebase_uid)
+            .await
+            .map_err(|e| CommerceRailsError::Storage(e.to_string()))?;
+        Ok(doc.and_then(|d| {
+            d.data
+                .get("customer_id")
+                .and_then(|v| v.as_str())
+                .map(CustomerId::new)
+        }))
     }
 
-    /// Returns the subscription projection for a `customer_ref`, if any.
-    pub fn projection_for(&self, customer_ref: &str) -> Option<SubscriptionProjection> {
-        self.projections.lock().ok()?.get(customer_ref).cloned()
+    /// Returns the [`SubscriptionProjection`] for a [`CustomerId`], if any.
+    pub async fn projection_for_customer(
+        &self,
+        customer_id: &CustomerId,
+    ) -> Result<Option<SubscriptionProjection>, CommerceRailsError> {
+        let doc = self
+            .store
+            .get(COLL_CUSTOMER_PROJECTIONS, customer_id.as_str())
+            .await
+            .map_err(|e| CommerceRailsError::Storage(e.to_string()))?;
+        let Some(doc) = doc else { return Ok(None) };
+        let value = serde_json::to_value(doc.data)
+            .map_err(|e| CommerceRailsError::Storage(e.to_string()))?;
+        let projection: SubscriptionProjection = serde_json::from_value(value)
+            .map_err(|e| CommerceRailsError::Storage(e.to_string()))?;
+        Ok(Some(projection))
     }
 
-    /// Updates the store from a typed webhook action. Returns true if the
-    /// action mutated state; false for `Ignored` or no-op cases. Lock
-    /// failures (mutex poisoned) are treated as no-op + false.
-    pub fn apply(&self, action: &CommerceWebhookAction) -> bool {
+    /// Resolves a provider customer reference into a CR-owned [`CustomerId`],
+    /// minting a fresh one on first sight. Stripe `cus_*` IDs are external
+    /// references and never become primary domain identifiers (QF-CR-08).
+    async fn resolve_or_mint_customer_id(
+        &self,
+        provider: ProviderName,
+        external_id: &str,
+    ) -> Result<CustomerId, CommerceRailsError> {
+        let key = provider_resolver_key(&provider, external_id);
+        if let Some(doc) = self
+            .store
+            .get(COLL_PROVIDER_TO_CUSTOMER, &key)
+            .await
+            .map_err(|e| CommerceRailsError::Storage(e.to_string()))?
+        {
+            if let Some(s) = doc.data.get("customer_id").and_then(|v| v.as_str()) {
+                return Ok(CustomerId::new(s));
+            }
+        }
+        let minted = CustomerId::new(format!("customer:cr:{}", uuid::Uuid::new_v4()));
+        let mapping = Document::new(&key, json!({ "customer_id": minted.as_str() }))
+            .map_err(|e| CommerceRailsError::Storage(e.to_string()))?;
+        self.store
+            .put(COLL_PROVIDER_TO_CUSTOMER, mapping)
+            .await
+            .map_err(|e| CommerceRailsError::Storage(e.to_string()))?;
+        Ok(minted)
+    }
+
+    /// Updates the store from a typed webhook action. Returns `Ok(true)` if
+    /// state was mutated; `Ok(false)` for [`CommerceWebhookAction::Ignored`]
+    /// or no-op cases (e.g. `UpdateSubscriptionStatus` for an unknown
+    /// customer). Storage errors are surfaced via `Err`.
+    pub async fn apply(
+        &self,
+        action: &CommerceWebhookAction,
+    ) -> Result<bool, CommerceRailsError> {
         match action {
             CommerceWebhookAction::LinkCustomerRef {
                 firebase_uid,
                 customer_ref,
             } => {
-                if let Ok(mut map) = self.customer_refs.lock() {
-                    map.insert(firebase_uid.clone(), customer_ref.clone());
-                    return true;
-                }
-                false
+                let cid = self
+                    .resolve_or_mint_customer_id(ProviderName::StripeConnect, customer_ref)
+                    .await?;
+                let doc = Document::new(firebase_uid, json!({ "customer_id": cid.as_str() }))
+                    .map_err(|e| CommerceRailsError::Storage(e.to_string()))?;
+                self.store
+                    .put(COLL_FIREBASE_TO_CUSTOMER, doc)
+                    .await
+                    .map_err(|e| CommerceRailsError::Storage(e.to_string()))?;
+                Ok(true)
             }
             CommerceWebhookAction::ApplySubscriptionProjection {
                 customer_ref,
                 projection,
             } => {
-                if let Ok(mut map) = self.projections.lock() {
-                    map.insert(customer_ref.clone(), projection.clone());
-                    return true;
-                }
-                false
+                let cid = self
+                    .resolve_or_mint_customer_id(ProviderName::StripeConnect, customer_ref)
+                    .await?;
+                let doc = Document::new(cid.as_str(), projection)
+                    .map_err(|e| CommerceRailsError::Storage(e.to_string()))?;
+                self.store
+                    .put(COLL_CUSTOMER_PROJECTIONS, doc)
+                    .await
+                    .map_err(|e| CommerceRailsError::Storage(e.to_string()))?;
+                Ok(true)
             }
             CommerceWebhookAction::UpdateSubscriptionStatus {
                 customer_ref,
                 subscription_status,
             } => {
-                if let Ok(mut map) = self.projections.lock()
-                    && let Some(p) = map.get_mut(customer_ref)
-                {
-                    p.subscription_status.clone_from(subscription_status);
-                    return true;
-                }
-                false
+                let cid = self
+                    .resolve_or_mint_customer_id(ProviderName::StripeConnect, customer_ref)
+                    .await?;
+                let Some(mut projection) = self.projection_for_customer(&cid).await? else {
+                    return Ok(false);
+                };
+                projection
+                    .subscription_status
+                    .clone_from(subscription_status);
+                let doc = Document::new(cid.as_str(), &projection)
+                    .map_err(|e| CommerceRailsError::Storage(e.to_string()))?;
+                self.store
+                    .put(COLL_CUSTOMER_PROJECTIONS, doc)
+                    .await
+                    .map_err(|e| CommerceRailsError::Storage(e.to_string()))?;
+                Ok(true)
             }
-            CommerceWebhookAction::Ignored => false,
+            CommerceWebhookAction::Ignored => Ok(false),
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+fn provider_resolver_key(provider: &ProviderName, external_id: &str) -> String {
+    let provider_tag = match provider {
+        ProviderName::StripeConnect => "stripe_connect",
+        ProviderName::Other(name) => name.as_str(),
+    };
+    format!("{provider_tag}:{external_id}")
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum BillingPlan {
     #[default]
     Free,
@@ -356,7 +758,7 @@ impl BillingPlan {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SubscriptionProjection {
     pub plan: BillingPlan,
     pub apps: Vec<String>,
@@ -390,6 +792,52 @@ impl SubscriptionProjection {
             current_period_end: None,
         }
     }
+}
+
+/// Rich entitlement read returned by
+/// [`CommerceRails::entitlement_projection`] (QF-CR-05). Companion to
+/// [`CommerceRails::is_entitled`] (the hot-path bool gate).
+///
+/// **Field set is panel-locked** per the 2026-06-15 review (RR B2
+/// amendment): adding new optional fields is non-breaking and does not
+/// require panel re-review; renaming or removing a field requires a new
+/// dated panel review. JSON Schema published at
+/// `commerce-rails/kb/Contracts/EntitlementProjection.schema.json`.
+///
+/// Intended usage: called once at app-shell init and after every
+/// entitlement transition (e.g. after a `refresh-on-403` retry). NOT
+/// called per-request — for that, use `is_entitled`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct EntitlementProjection {
+    /// True iff the firebase_uid has an active subscription whose plan
+    /// grants the named app.
+    pub entitled: bool,
+    /// Static checkout URL configured at the deploy boundary
+    /// (`CR_CHECKOUT_URL` env or `CommerceRailsConfig::with_checkout_url`).
+    /// For dynamic per-customer checkout sessions, call
+    /// `CommerceRails::create_checkout_session` directly.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkout_url: Option<String>,
+    /// Static billing-portal URL configured at the deploy boundary
+    /// (`CR_PORTAL_URL` env or `CommerceRailsConfig::with_portal_url`).
+    /// For dynamic per-customer portal sessions, call
+    /// `CommerceRails::create_portal_session` directly.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub portal_url: Option<String>,
+    /// Static signup URL configured at the deploy boundary
+    /// (`CR_SIGNUP_URL` env or `CommerceRailsConfig::with_signup_url`).
+    /// Apps show this to not-yet-entitled users.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signup_url: Option<String>,
+    /// Timestamp of the next subscription renewal (ISO 8601 in the JSON
+    /// representation). Absent when there is no stored subscription
+    /// projection for the customer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_renewal: Option<chrono::DateTime<chrono::Utc>>,
+    /// Lowercase plan label (`"free"`, `"starter"`, `"team"`,
+    /// `"enterprise"`). Absent when no stored projection.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_label: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -820,6 +1268,39 @@ struct StripePortalSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
+    use runway_storage::Query;
+    use runway_storage::traits::Result as StorageResult;
+
+    /// Inert `DocumentStore` for unit tests that exercise signature
+    /// verification or webhook parsing only — paths that never touch the
+    /// entitlement store. Integration tests in `tests/entitlement_store.rs`
+    /// use a real `StorageKit::local(tempdir)` backend.
+    struct NoopStore;
+
+    #[async_trait]
+    impl DocumentStore for NoopStore {
+        async fn put(&self, _collection: &str, _doc: Document) -> StorageResult<()> {
+            Ok(())
+        }
+        async fn get(
+            &self,
+            _collection: &str,
+            _id: &str,
+        ) -> StorageResult<Option<Document>> {
+            Ok(None)
+        }
+        async fn delete(&self, _collection: &str, _id: &str) -> StorageResult<()> {
+            Ok(())
+        }
+        async fn query(
+            &self,
+            _collection: &str,
+            _q: Query,
+        ) -> StorageResult<Vec<Document>> {
+            Ok(vec![])
+        }
+    }
 
     fn rails() -> CommerceRails {
         let config = CommerceRailsConfig::new("whsec_test", "", "price_team", "price_starter");
@@ -828,10 +1309,10 @@ mod tests {
         // never invoke the HTTP path, so the client here is a sentinel. If
         // a future test needs to hit a stubbed Stripe API, wire a stub
         // client (e.g. backed by `wiremock`) via the existing
-        // `CommerceRails::new(client, config)` DI constructor instead.
+        // `CommerceRails::new(client, config, store)` DI constructor.
         #[allow(clippy::disallowed_methods)]
         let client = reqwest::Client::new();
-        CommerceRails::new(client, config)
+        CommerceRails::new(client, config, Arc::new(NoopStore))
     }
 
     fn signature_header(payload: &[u8], secret: &str) -> String {

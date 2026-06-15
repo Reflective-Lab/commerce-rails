@@ -26,6 +26,50 @@ impl CommerceId {
     }
 }
 
+/// CR-internal customer identity.
+///
+/// Opaque, CR-owned, provider-independent. The `EntitlementStore` keys by
+/// `CustomerId`, never by a provider-specific reference such as a Stripe
+/// `cus_*` ID. Provider references for a given customer live separately as
+/// [`ProviderObjectRef`] values resolved at the adapter boundary.
+///
+/// Wraps a [`CommerceId`] so the broader Commerce Rails identity machinery
+/// (string-stable, hashable, serde-friendly via `as_str`) applies uniformly.
+/// Use the newtype at API boundaries to prevent accidental cross-entity
+/// substitution (e.g. passing a subscription id where a customer id is
+/// expected).
+///
+/// Tracked landing: `QF-CR-08` (boundary debt) — see
+/// `commerce-rails/QUALITY_BACKLOG.md`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CustomerId(CommerceId);
+
+impl CustomerId {
+    /// Creates a new customer identity from a raw string value.
+    ///
+    /// Callers should prefer prefixed string forms like `"customer:cr:..."`
+    /// for self-describing identifiers, mirroring the convention used by
+    /// other [`CommerceId`]-backed entities in this crate.
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(CommerceId::new(value))
+    }
+
+    /// Wraps an existing [`CommerceId`] as a `CustomerId`.
+    pub fn from_commerce_id(id: CommerceId) -> Self {
+        Self(id)
+    }
+
+    /// Returns the underlying [`CommerceId`].
+    pub fn as_commerce_id(&self) -> &CommerceId {
+        &self.0
+    }
+
+    /// Returns the identifier as a string slice.
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
 /// External provider reference. Never use this as the Commerce Rails primary id.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ProviderObjectRef {
@@ -754,6 +798,24 @@ mod tests {
         assert!(seen.contains(&cloned));
         assert_eq!(original, cloned);
         assert_eq!("partner_account:acme", original.as_str());
+    }
+
+    #[test]
+    fn customer_id_wraps_commerce_id_with_stable_value_identity() {
+        let inner = CommerceId::new("customer:cr:01HZX0F8K9");
+        let cid = CustomerId::from_commerce_id(inner.clone());
+
+        assert_eq!(cid.as_commerce_id(), &inner);
+        assert_eq!(cid.as_str(), "customer:cr:01HZX0F8K9");
+
+        let cloned = cid.clone();
+        let mut seen = HashSet::new();
+        assert!(seen.insert(cid.clone()));
+        assert!(seen.contains(&cloned));
+        assert_eq!(cid, cloned);
+
+        let other = CustomerId::new("customer:cr:01HZX0F8K9");
+        assert_eq!(cid, other, "construction paths converge on the same value");
     }
 
     #[test]

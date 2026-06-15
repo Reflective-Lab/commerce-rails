@@ -9,6 +9,13 @@ ledger-sensitive audit, and payment-provider reconciliation.
 It is not Mosaic, Converge, Organism, Axiom, Helms, or Runtime Runway. It consumes
 those layers and owns Reflective Labs commercial authority.
 
+> **Before doing platform-boundary work**, read in this order:
+> 1. `/Users/kpernyer/dev/reflective/BOUNDARY_REGISTRY.md` — the four-layer authority matrix and the Marquee App Contract (ten hard rules).
+> 2. `kb/Architecture/Operating Authority Boundary.md` — Commerce Rails' authoritative boundary doc. For the consumer-facing surface (what a marquee app actually imports and calls), also read `kb/Contracts/Apps Consuming Commerce Rails.md`.
+> 3. The active handoff for the app you're working on (e.g. `/Users/kpernyer/dev/reflective/HANDOFF_quorum-sense_2026-06-15.md`).
+>
+> Only then read code. If you are tempted to introduce something the Marquee App Contract forbids, stop and either prove it doesn't apply, or propose a contract revision through the three-architect panel. Do not silently route around the contract.
+
 ## Start Here
 
 1. Read `README.md`.
