@@ -381,7 +381,10 @@ async fn entitlement_projection_entitled_includes_plan_label_and_next_renewal() 
 
     let projection = service.entitlement_projection("user-1", "quorum").await;
 
-    assert!(projection.entitled, "entitled when active + plan grants app");
+    assert!(
+        projection.entitled,
+        "entitled when active + plan grants app"
+    );
     assert_eq!(projection.plan_label.as_deref(), Some("team"));
     assert!(projection.next_renewal.is_some(), "next_renewal populated");
     assert_eq!(

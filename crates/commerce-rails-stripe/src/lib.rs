@@ -461,7 +461,11 @@ impl CommerceRails {
     /// lifetime of the JWT that produced `firebase_uid`; never cache past
     /// JWT validity (Marquee App Contract rule 8).
     pub async fn is_entitled(&self, firebase_uid: &str, app: &str) -> bool {
-        let customer_id = match self.entitlements.customer_id_for_firebase(firebase_uid).await {
+        let customer_id = match self
+            .entitlements
+            .customer_id_for_firebase(firebase_uid)
+            .await
+        {
             Ok(Some(cid)) => cid,
             Ok(None) => return false,
             Err(err) => {
@@ -473,7 +477,11 @@ impl CommerceRails {
                 return false;
             }
         };
-        let projection = match self.entitlements.projection_for_customer(&customer_id).await {
+        let projection = match self
+            .entitlements
+            .projection_for_customer(&customer_id)
+            .await
+        {
             Ok(Some(p)) => p,
             Ok(None) => return false,
             Err(err) => {
@@ -509,7 +517,11 @@ impl CommerceRails {
         firebase_uid: &str,
         app: &str,
     ) -> EntitlementProjection {
-        let customer_id = match self.entitlements.customer_id_for_firebase(firebase_uid).await {
+        let customer_id = match self
+            .entitlements
+            .customer_id_for_firebase(firebase_uid)
+            .await
+        {
             Ok(opt) => opt,
             Err(err) => {
                 tracing::error!(
@@ -537,10 +549,8 @@ impl CommerceRails {
 
         let (entitled, next_renewal, plan_label) = match projection {
             Some(p) => {
-                let active = matches!(
-                    p.subscription_status.as_str(),
-                    "active" | "trialing"
-                ) && p.plan.apps().iter().any(|a| a == app);
+                let active = matches!(p.subscription_status.as_str(), "active" | "trialing")
+                    && p.plan.apps().iter().any(|a| a == app);
                 let next_renewal = p
                     .current_period_end
                     .and_then(|secs| chrono::DateTime::<chrono::Utc>::from_timestamp(secs, 0));
@@ -658,10 +668,7 @@ impl EntitlementStore {
     /// state was mutated; `Ok(false)` for [`CommerceWebhookAction::Ignored`]
     /// or no-op cases (e.g. `UpdateSubscriptionStatus` for an unknown
     /// customer). Storage errors are surfaced via `Err`.
-    pub async fn apply(
-        &self,
-        action: &CommerceWebhookAction,
-    ) -> Result<bool, CommerceRailsError> {
+    pub async fn apply(&self, action: &CommerceWebhookAction) -> Result<bool, CommerceRailsError> {
         match action {
             CommerceWebhookAction::LinkCustomerRef {
                 firebase_uid,
@@ -1283,21 +1290,13 @@ mod tests {
         async fn put(&self, _collection: &str, _doc: Document) -> StorageResult<()> {
             Ok(())
         }
-        async fn get(
-            &self,
-            _collection: &str,
-            _id: &str,
-        ) -> StorageResult<Option<Document>> {
+        async fn get(&self, _collection: &str, _id: &str) -> StorageResult<Option<Document>> {
             Ok(None)
         }
         async fn delete(&self, _collection: &str, _id: &str) -> StorageResult<()> {
             Ok(())
         }
-        async fn query(
-            &self,
-            _collection: &str,
-            _q: Query,
-        ) -> StorageResult<Vec<Document>> {
+        async fn query(&self, _collection: &str, _q: Query) -> StorageResult<Vec<Document>> {
             Ok(vec![])
         }
     }
